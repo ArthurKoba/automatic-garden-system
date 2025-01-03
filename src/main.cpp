@@ -1,8 +1,15 @@
+#include "configs/configs.h"
+
 #include <Arduino.h>
-void setup() {
-// write your initialization code here
+
+
+__attribute__((used)) void setup() {
+    Serial.begin(SERIAL_BAUDRATE);
+    Serial.println();
 }
 
-void loop() {
-// write your code here
+
+__attribute__((used)) void loop() {
+    Serial.println(123);
+    delay(1000);
 }
