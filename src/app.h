@@ -24,6 +24,7 @@ class AutomaticGarden {
             uint32_t time_between_iterations_ms = 1000,
             bool forcibly = false
     );
+    static void show_time(const DateTime& time_, const __FlashStringHelper *prefix = nullptr);
 public:
     void setup();
     void loop();

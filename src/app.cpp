@@ -61,14 +61,13 @@ void AutomaticGarden::_update_time_task(bool forcibly) {
     auto delta = float(date_time_ntp.unixtime()) - float(date_time_rtc.unixtime());
 
     if (abs(delta) < 2) return;
-    Serial.print(F("Got time from NTP: "));
-    Serial.printf("%.2i:%.2i:%.2i\n", date_time_ntp.hour(), date_time_ntp.minute(), date_time_ntp.second());
-    Serial.print(F("Time from RTC: "));
-    Serial.printf("%.2i:%.2i:%.2i\n", date_time_rtc.hour(), date_time_rtc.minute(), date_time_rtc.second());
+    show_time(date_time_ntp, F("Got time from NTP: "));
+    show_time(date_time_rtc, F("Time from RTC: "));
+
     Serial.print(F("Delta time seconds: "));
     Serial.println(delta);
     _rtc.adjust(date_time_ntp);
-    Serial.println(F("Update RTC time from NTP."));
+    Serial.println(F("Correction RTC time from NTP."));
 }
 
 bool AutomaticGarden::need_skip_task_iteration(
@@ -82,14 +81,22 @@ bool AutomaticGarden::need_skip_task_iteration(
     return false;
 }
 
+void AutomaticGarden::show_time(const DateTime &time_, const __FlashStringHelper *prefix) {
+    if (prefix) Serial.print(prefix);
+    static auto format = F("%.2i.%.2i.%.4lu %.2i:%.2i:%.2i (%lu)\n");
+    Serial.printf(reinterpret_cast<const char *>(format),
+                  time_.day(), time_.month(), time_.year(), time_.hour(), time_.minute(), time_.second(),
+                  time_.unixtime()
+    );
+}
+
 void AutomaticGarden::setup() {
     Serial.println(F("Run Automatic Garden System Controller"));
     _last_wifi_status = WiFi.begin(WIFI_SSID, WIFI_PASS);
 
     if (_rtc.begin()) {
         _current_time = _rtc.now();
-        Serial.print(F("Current time from RTC: "));
-        Serial.printf("%.2i:%.2i:%.2i\n", _current_time.hour(), _current_time.minute(), _current_time.second());
+        show_time(_current_time, F("Currently received from RTC unit: "));
     } else {
         Serial.println(F("Couldn't find RTC"));
     }
