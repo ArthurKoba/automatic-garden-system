@@ -1,0 +1,123 @@
+#include "app.h"
+
+void AutomaticGarden::_on_connect_wifi() {
+    Serial.print(F("Connected to Wi-Fi. IP: "));
+    Serial.println(_wifi.localIP().toString().c_str());
+    if (_ntp) return;
+    _ntp = &NTP;
+    _ntp->setHost(NTP_SERVER_DOMAIN);
+    _ntp->begin();
+    _update_time_task(true);
+}
+
+void AutomaticGarden::_on_disconnect_wifi() {
+    Serial.print(F("Disconnected from Wi-Fi."));
+    if (not _ntp) return;
+    _ntp = nullptr;
+}
+
+void AutomaticGarden::_wifi_task(bool forcibly) {
+    static uint32_t last_exec = 0;
+    if (need_skip_task_iteration(last_exec, 100, forcibly)) return;
+
+    wl_status_t status = _wifi.status();
+
+    if (status == _last_wifi_status) return;
+    _last_wifi_status = status;
+
+    switch (status) {
+        case WL_CONNECTED:
+            _on_connect_wifi();
+            break;
+        case WL_WRONG_PASSWORD:
+            Serial.println(F("Wrong Wi-Fi password."));
+            break;
+        case WL_CONNECTION_LOST:
+        case WL_DISCONNECTED:
+            _on_disconnect_wifi();
+            break;
+        case WL_IDLE_STATUS:
+        case WL_NO_SSID_AVAIL:
+        case WL_SCAN_COMPLETED:
+        case WL_NO_SHIELD:
+        case WL_CONNECT_FAILED:
+            break;
+    }
+}
+
+void AutomaticGarden::_update_time_task(bool forcibly) {
+    static uint32_t last_exec = 0;
+    if (need_skip_task_iteration(last_exec, 1000, forcibly)) return;
+
+    if (not _rtc.isrunning() and not _rtc.begin()) {
+        Serial.println(F("Failed running"));
+        return;
+    }
+    if (_last_wifi_status not_eq WL_CONNECTED or not _ntp or not _ntp->tick()) return;
+
+    auto date_time_ntp = DateTime(_ntp->getUnix() + 3600 * TIMEZONE_OFFSET);
+    auto date_time_rtc = _rtc.now();
+
+    auto delta = float(date_time_ntp.unixtime()) - float(date_time_rtc.unixtime());
+
+    if (abs(delta) < 2) return;
+    Serial.print(F("Got time from NTP: "));
+    Serial.printf("%.2i:%.2i:%.2i\n", date_time_ntp.hour(), date_time_ntp.minute(), date_time_ntp.second());
+    Serial.print(F("Time from RTC: "));
+    Serial.printf("%.2i:%.2i:%.2i\n", date_time_rtc.hour(), date_time_rtc.minute(), date_time_rtc.second());
+    Serial.print(F("Delta time seconds: "));
+    Serial.println(delta);
+    _rtc.adjust(date_time_ntp);
+    Serial.println(F("Update RTC time from NTP."));
+}
+
+bool AutomaticGarden::need_skip_task_iteration(
+        uint32_t &last_iteration_time,
+        uint32_t time_between_iterations_ms,
+        bool forcibly
+    ) {
+    auto current_time= millis();
+    if (current_time - last_iteration_time < time_between_iterations_ms and not forcibly) return true;
+    last_iteration_time = current_time;
+    return false;
+}
+
+void AutomaticGarden::setup() {
+    Serial.println(F("Run Automatic Garden System Controller"));
+    _last_wifi_status = WiFi.begin(WIFI_SSID, WIFI_PASS);
+
+    if (_rtc.begin()) {
+        _current_time = _rtc.now();
+        Serial.print(F("Current time from RTC: "));
+        Serial.printf("%.2i:%.2i:%.2i\n", _current_time.hour(), _current_time.minute(), _current_time.second());
+    } else {
+        Serial.println(F("Couldn't find RTC"));
+    }
+//    digitalWrite(GROW_LAMP_PIN, false);
+}
+
+void AutomaticGarden::loop() {
+    _wifi_task();
+    _update_time_task();
+//    delay(100);
+//    dt = rtc.now();
+
+//    if (NTP.tick()) {
+//        dt = DateTime(NTP.getUnix() + 3600 * TIMEZONE_OFFSET);
+//        rtc.adjust(dt);
+//        Serial.println("Update Datetime");
+//    }
+//    Serial.printf("%i:%i %i:%i:%i\n", dt.day(), dt.month(), dt.hour(), dt.minute(), dt.second());
+//    auto value = analogRead(SOIL_MOISTURE_ANALOG_PIN);
+//    Serial.println(value);
+}
+
+
+
+
+
+
+
+
+
+
