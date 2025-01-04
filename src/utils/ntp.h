@@ -5,12 +5,12 @@
 #define NTP_SERVER_DOMAIN "pool.ntp.org"
 #endif
 
-#if not defined(NTP_TIMEZONE)
-#define NTP_TIMEZONE 0
+#if not defined(TIMEZONE_OFFSET)
+#define TIMEZONE_OFFSET 0
 #endif
 
 #include <GyverNTP.h>
 
-void init_ntp();
+void init_ntp(GyverNTP &ntp);
 
 #endif //AUTOMATIC_GARDEN_SYSTEM_NTP_H
