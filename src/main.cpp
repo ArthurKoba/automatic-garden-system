@@ -6,7 +6,6 @@
 #include "utils/ntp.h"
 
 
-
 GyverNTP ntp;
 RTC_DS1307 rtc;
 DateTime dt;
@@ -16,14 +15,23 @@ __attribute__((used)) void setup() {
     Serial.begin(SERIAL_BAUDRATE);
     Serial.println();
 
-    connect_to_wifi();
-    init_ntp(ntp);
+
     pinMode(LED_PIN, OUTPUT);
     if (!rtc.begin()) {
         Serial.println("Couldn't find RTC");
     }
+    pinMode(GROW_LAMP_PIN, OUTPUT);
+    pinMode(RED_LIGHT_PIN, OUTPUT);
+    pinMode(GREEN_LIGHT_PIN, OUTPUT);
+    pinMode(BLUE_LIGHT_PIN, OUTPUT);
+
+    digitalWrite(RED_LIGHT_PIN, true);
+    digitalWrite(GREEN_LIGHT_PIN, false);
+    digitalWrite(BLUE_LIGHT_PIN, true);
 //    digitalWrite(GROW_LAMP_PIN, false);
     //    update_rtc_time(&NTP, &rtc);
+    connect_to_wifi();
+    init_ntp(ntp);
 }
 
 
@@ -39,5 +47,6 @@ __attribute__((used)) void loop() {
 //        Serial.println("Update Datetime");
 //    }
 //    Serial.printf("%i:%i %i:%i:%i\n", dt.day(), dt.month(), dt.hour(), dt.minute(), dt.second());
-
+//    auto value = analogRead(SOIL_MOISTURE_ANALOG_PIN);
+//    Serial.println(value);
 }
