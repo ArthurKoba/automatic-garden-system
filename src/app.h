@@ -11,25 +11,33 @@
 
 
 class AutomaticGarden {
+    String _wifi_ssid;
+    String _wifi_pass;
+    wl_status_t _last_wifi_status = WL_NO_SHIELD;
+    GardenPinsConfig _pin_cfg;
+
+    DateTime _disable_grow_lamp_time = DateTime(0, 0, 0, 23, 0, 0);
+    DateTime _enable_grow_lamp_time = DateTime(0, 0, 0, 7, 0, 0);
+
     RTC_DS1307 _rtc;
     ESP8266WiFiClass _wifi;
     GyverNTP *_ntp = nullptr;
-    GardenPinsConfig _pin_configs;
-
-    String _wifi_ssid;
-    String _wifi_pass;
-    DateTime _current_time;
-    wl_status_t _last_wifi_status = WL_NO_SHIELD;
-
 
     void _on_connect_wifi();
+
     void _on_disconnect_wifi();
+
     void _wifi_task();
+
     void _update_time_task(bool forcibly = false);
+
+    void _update_lamps_states_task(bool forcibly = false);
 
 public:
     AutomaticGarden();
-    void setup(GardenPinsConfig pin_configs);
+
+    void setup(GardenPinsConfig pin_configs = {});
+
     void loop();
 };
 

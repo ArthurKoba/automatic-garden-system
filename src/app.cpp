@@ -95,6 +95,39 @@ void AutomaticGarden::_update_time_task(bool forcibly) {
     Serial.println(delta);
     _rtc.adjust(date_time_ntp);
     Serial.println(F("Correction RTC time from NTP."));
+    _update_lamps_states_task(true);
+}
+
+void AutomaticGarden::_update_lamps_states_task(bool forcibly) {
+    static uint32_t last_exec = 0;
+    static uint32_t delay_iter_ms = 1000;
+    if (need_skip_task_iteration(last_exec, delay_iter_ms, forcibly)) return;
+
+    if (not _rtc.isrunning() or _rtc.now().year() < 2000) {
+        delay_iter_ms = 10000;
+        if (delay_iter_ms not_eq 10000) {
+            Serial.println(_rtc.isrunning() ?
+                           F("Current year less 2000. Skip update lamps states task!") :
+                           F("RTC unit not started. Skip update lamps states task!")
+            );
+        }
+        return;
+    };
+
+    bool need_skip = true;
+
+    if (_pin_cfg.grow_lamp not_eq -1) {
+        need_skip = false;
+        auto current_time = DateTime(0, 0, 0,
+                                     _rtc.now().hour(), _rtc.now().minute(), _rtc.now().second()
+        );
+
+        if (current_time >= _enable_grow_lamp_time and current_time < _disable_grow_lamp_time) {
+            digitalWrite(_pin_cfg.grow_lamp, true);
+        } else digitalWrite(_pin_cfg.grow_lamp, false);
+    }
+
+    delay_iter_ms = need_skip ? 10000 : 100;
 }
 
 AutomaticGarden::AutomaticGarden() {
@@ -105,29 +138,31 @@ AutomaticGarden::AutomaticGarden() {
 void AutomaticGarden::setup(GardenPinsConfig pin_configs) {
     Serial.println(F("Run Automatic Garden System controller\n"));
 
-    _pin_configs = pin_configs;
+    _pin_cfg = pin_configs;
 
-    if (_pin_configs.grow_lamp not_eq -1) pinMode(_pin_configs.grow_lamp, OUTPUT);
+    if (_pin_cfg.grow_lamp not_eq -1) pinMode(_pin_cfg.grow_lamp, OUTPUT);
     else Serial.println(F("ERROR: grow lamp pin not installed!"));
 
-    if (_pin_configs.soil_moisture_analog not_eq -1) pinMode(_pin_configs.soil_moisture_analog, OUTPUT);
+    if (_pin_cfg.soil_moisture_analog not_eq -1) pinMode(_pin_cfg.soil_moisture_analog, OUTPUT);
     else Serial.println(F("ERROR: soil moisture pin not installed!"));
 
-    if (_pin_configs.red_light_lamp not_eq -1) pinMode(_pin_configs.red_light_lamp, OUTPUT);
+    if (_pin_cfg.red_light_lamp not_eq -1) pinMode(_pin_cfg.red_light_lamp, OUTPUT);
     else Serial.println(F("ERROR: red light lamp pin not installed!"));
 
-    if (_pin_configs.green_light_lamp not_eq -1) pinMode(_pin_configs.green_light_lamp, OUTPUT);
+    if (_pin_cfg.green_light_lamp not_eq -1) pinMode(_pin_cfg.green_light_lamp, OUTPUT);
     else Serial.println(F("ERROR: green light lamp pin not installed!"));
 
-    if (_pin_configs.blue_light_lamp not_eq -1) pinMode(_pin_configs.blue_light_lamp, OUTPUT);
+    if (_pin_cfg.blue_light_lamp not_eq -1) pinMode(_pin_cfg.blue_light_lamp, OUTPUT);
     else Serial.println(F("ERROR: blue light lamp pin not installed!"));
 
     if (_wifi_ssid.length()) _last_wifi_status = WiFi.begin(_wifi_ssid, _wifi_pass);
     else Serial.println(F("ERROR: wifi ssid not set. Trying connect not possible!"));
 
     if (_rtc.begin()) {
-        _current_time = _rtc.now();
-        show_time(_current_time, F("Currently received from RTC unit: "));
+        auto current_time = _rtc.now();
+        show_time(current_time, F("Currently received from RTC unit: "));
+        if (current_time.year() < 2000) Serial.println(F("Current year less 2000. Maybe RTC Unit battery low!"));
+        else _update_lamps_states_task(true);
     } else {
         Serial.println(F("Couldn't find RTC"));
     }
@@ -136,15 +171,5 @@ void AutomaticGarden::setup(GardenPinsConfig pin_configs) {
 void AutomaticGarden::loop() {
     _wifi_task();
     _update_time_task();
-//    delay(100);
-//    dt = rtc.now();
-
-//    if (NTP.tick()) {
-//        dt = DateTime(NTP.getUnix() + 3600 * TIMEZONE_OFFSET);
-//        rtc.adjust(dt);
-//        Serial.println("Update Datetime");
-//    }
-//    Serial.printf("%i:%i %i:%i:%i\n", dt.day(), dt.month(), dt.hour(), dt.minute(), dt.second());
-//    auto value = analogRead(SOIL_MOISTURE_ANALOG_PIN);
-//    Serial.println(value);
+    _update_lamps_states_task();
 }
