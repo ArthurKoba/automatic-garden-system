@@ -6,10 +6,15 @@
 #include "RTClib.h"
 #include "GyverNTP.h"
 
+#include "types.h"
+#include "utils.h"
+
+
 class AutomaticGarden {
     RTC_DS1307 _rtc;
     ESP8266WiFiClass _wifi;
     GyverNTP *_ntp = nullptr;
+    GardenPinsConfig _pin_configs;
 
     String _wifi_ssid;
     String _wifi_pass;
@@ -24,7 +29,7 @@ class AutomaticGarden {
 
 public:
     AutomaticGarden();
-    void setup();
+    void setup(GardenPinsConfig pin_configs);
     void loop();
 };
 

@@ -102,8 +102,25 @@ AutomaticGarden::AutomaticGarden() {
     _wifi_pass = String(F(WIFI_PASS));
 }
 
-void AutomaticGarden::setup() {
+void AutomaticGarden::setup(GardenPinsConfig pin_configs) {
     Serial.println(F("Run Automatic Garden System controller\n"));
+
+    _pin_configs = pin_configs;
+
+    if (_pin_configs.grow_lamp not_eq -1) pinMode(_pin_configs.grow_lamp, OUTPUT);
+    else Serial.println(F("ERROR: grow lamp pin not installed!"));
+
+    if (_pin_configs.soil_moisture_analog not_eq -1) pinMode(_pin_configs.soil_moisture_analog, OUTPUT);
+    else Serial.println(F("ERROR: soil moisture pin not installed!"));
+
+    if (_pin_configs.red_light_lamp not_eq -1) pinMode(_pin_configs.red_light_lamp, OUTPUT);
+    else Serial.println(F("ERROR: red light lamp pin not installed!"));
+
+    if (_pin_configs.green_light_lamp not_eq -1) pinMode(_pin_configs.green_light_lamp, OUTPUT);
+    else Serial.println(F("ERROR: green light lamp pin not installed!"));
+
+    if (_pin_configs.blue_light_lamp not_eq -1) pinMode(_pin_configs.blue_light_lamp, OUTPUT);
+    else Serial.println(F("ERROR: blue light lamp pin not installed!"));
 
     if (_wifi_ssid.length()) _last_wifi_status = WiFi.begin(_wifi_ssid, _wifi_pass);
     else Serial.println(F("ERROR: wifi ssid not set. Trying connect not possible!"));
@@ -114,7 +131,6 @@ void AutomaticGarden::setup() {
     } else {
         Serial.println(F("Couldn't find RTC"));
     }
-//    digitalWrite(GROW_LAMP_PIN, false);
 }
 
 void AutomaticGarden::loop() {
