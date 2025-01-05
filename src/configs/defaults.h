@@ -19,4 +19,24 @@
 #error Unknown platform
 #endif
 
+#if not defined(SOIL_MOISTURE_APIN)
+#define SOIL_MOISTURE_APIN -1
+#else
+
+#if not defined(GROW_LAMP_PIN)
+#define GROW_LAMP_PIN -1
+#else
+
+#if not defined(RED_LIGHT_PIN)
+#define RED_LIGHT_PIN -1
+#else
+
+#if not defined(GREEN_LIGHT_PIN)
+#define GREEN_LIGHT_PIN -1
+#else
+
+#if not defined(BLUE_LIGHT_PIN)
+#define BLUE_LIGHT_PIN -1
+#else
+
 #endif //AUTOMATIC_GARDEN_SYSTEM_CONFIGS_DEFAULTS_H

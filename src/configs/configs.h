@@ -3,7 +3,7 @@
 
 #include "private.h"
 
-#define SOIL_MOISTURE_ANALOG_PIN 17
+#define SOIL_MOISTURE_APIN 17
 
 #define GROW_LAMP_PIN 16
 
