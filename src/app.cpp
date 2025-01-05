@@ -97,12 +97,16 @@ void AutomaticGarden::_update_time_task(bool forcibly) {
     Serial.println(F("Correction RTC time from NTP."));
 }
 
-
-
+AutomaticGarden::AutomaticGarden() {
+    _wifi_ssid = String(F(WIFI_SSID));
+    _wifi_pass = String(F(WIFI_PASS));
+}
 
 void AutomaticGarden::setup() {
-    Serial.println(F("Run Automatic Garden System Controller"));
-    _last_wifi_status = WiFi.begin(WIFI_SSID, WIFI_PASS);
+    Serial.println(F("Run Automatic Garden System controller\n"));
+
+    if (_wifi_ssid.length()) _last_wifi_status = WiFi.begin(_wifi_ssid, _wifi_pass);
+    else Serial.println(F("ERROR: wifi ssid not set. Trying connect not possible!"));
 
     if (_rtc.begin()) {
         _current_time = _rtc.now();
