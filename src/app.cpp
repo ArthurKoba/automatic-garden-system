@@ -20,9 +20,9 @@ void AutomaticGarden::_on_disconnect_wifi() {
     _ntp = nullptr;
 }
 
-void AutomaticGarden::_wifi_task(bool forcibly) {
+void AutomaticGarden::_wifi_task() {
     static uint32_t last_exec = 0;
-    if (need_skip_task_iteration(last_exec, 100, forcibly)) return;
+    if (need_skip_task_iteration(last_exec, 100)) return;
 
     wl_status_t status = _wifi.status();
 

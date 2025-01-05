@@ -19,7 +19,7 @@ class AutomaticGarden {
 
     void _on_connect_wifi();
     void _on_disconnect_wifi();
-    void _wifi_task(bool forcibly = false);
+    void _wifi_task();
     void _update_time_task(bool forcibly = false);
 
 public:
