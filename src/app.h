@@ -19,12 +19,6 @@ class AutomaticGarden {
     void _wifi_task(bool forcibly = false);
     void _update_time_task(bool forcibly = false);
 
-    static bool need_skip_task_iteration(
-            uint32_t &last_iteration_time,
-            uint32_t time_between_iterations_ms = 1000,
-            bool forcibly = false
-    );
-    static void show_time(const DateTime& time_, const __FlashStringHelper *prefix = nullptr);
 public:
     void setup();
     void loop();
