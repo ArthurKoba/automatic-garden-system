@@ -9,12 +9,18 @@
 #include "types.h"
 #include "utils.h"
 
+struct ErrorsAppInfo  {
+    bool wifi_error_state : 1;
+    bool ntp_error_state : 1;
+    bool rtc_error_state : 1;
+};
 
 class AutomaticGarden {
     String _wifi_ssid;
     String _wifi_pass;
     wl_status_t _last_wifi_status = WL_NO_SHIELD;
     GardenPinsConfig _pin_cfg;
+    ErrorsAppInfo _errors{};
 
     DateTime _disable_grow_lamp_time = DateTime(0, 0, 0, 23, 0, 0);
     DateTime _enable_grow_lamp_time = DateTime(0, 0, 0, 7, 0, 0);
@@ -39,6 +45,7 @@ public:
     void setup(GardenPinsConfig pin_configs = {});
 
     void loop();
+    ErrorsAppInfo get_errors_info();
 };
 
 #endif //AUTOMATIC_GARDEN_SYSTEM_APP_H
