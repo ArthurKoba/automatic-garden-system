@@ -4,16 +4,6 @@ void AutomaticGarden::_on_connect_wifi() {
     Serial.print(F("Connected to Wi-Fi. IP: "));
     Serial.println(_wifi.localIP().toString().c_str());
     _errors.wifi_error_state = false;
-    if (_ntp) return;
-    _ntp = &NTP;
-    _ntp->setHost(NTP_SERVER_DOMAIN);
-    if (not _ntp->begin()) {
-        Serial.print(F("Failed start NTP."));
-        _errors.ntp_error_state = true;
-        _ntp = nullptr;
-        return;
-    }
-    _errors.ntp_error_state = false;
     _update_time_task(true);
 }
 
@@ -23,7 +13,7 @@ void AutomaticGarden::_on_disconnect_wifi() {
     _ntp = nullptr;
 }
 
-void AutomaticGarden::_wifi_task() {
+void AutomaticGarden::_check_wifi_task() {
     static uint32_t last_exec = 0;
     if (need_skip_task_iteration(last_exec, 100)) return;
 
@@ -35,21 +25,24 @@ void AutomaticGarden::_wifi_task() {
     switch (status) {
         case WL_CONNECTED:
             _on_connect_wifi();
+            _errors.wifi_not_connected_state = false;
             break;
         case WL_CONNECTION_LOST:
         case WL_DISCONNECTED:
             _on_disconnect_wifi();
+            _errors.wifi_not_connected_state = true;
             break;
         case WL_IDLE_STATUS:
         case WL_SCAN_COMPLETED:
-            break;
         case WL_WRONG_PASSWORD:
-            Serial.println(F("Wrong Wi-Fi password."));
         case WL_NO_SSID_AVAIL:
         case WL_NO_SHIELD:
         case WL_CONNECT_FAILED:
             _errors.wifi_error_state = true;
             break;
+    }
+    if (status == WL_WRONG_PASSWORD) {
+        Serial.println(F("Wrong Wi-Fi password."));
     }
 }
 
@@ -175,6 +168,7 @@ void AutomaticGarden::setup(GardenPinsConfig pin_configs) {
 
 void AutomaticGarden::loop() {
     _wifi_task();
+    _check_wifi_task();
     _update_time_task();
     _update_lamps_states_task();
 }
