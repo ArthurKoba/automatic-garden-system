@@ -22,6 +22,15 @@ __attribute__((used)) void loop() {
     auto errors = app.get_errors_info();
     bool have_errors = *reinterpret_cast<uint8_t *>(&errors) not_eq 0;
 
+    static ErrorsAppInfo last_errors;
+    if (last_check_app_state_time_ms > 5000 and
+        *reinterpret_cast<uint8_t *>(&last_errors) not_eq *reinterpret_cast<uint8_t *>(&errors)) {
+        last_errors = errors;
+        Serial.print(F("Update app errors. Bitmap: "));
+        show_bit_map(*reinterpret_cast<uint8_t *>(&last_errors));
+    }
+
+
     delay_between_iterations = not have_errors ? 1000 : 100;
     digitalWrite(LED_PIN, !digitalRead(LED_PIN));
 }
