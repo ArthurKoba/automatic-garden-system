@@ -23,3 +23,12 @@ void show_bit_map(uint8_t flags) {
     }
     Serial.println();
 }
+
+bool is_valid_pin(int8_t pin, bool &error_flag, const __FlashStringHelper *pin_name) {
+    if (pin not_eq -1) return false;
+    if (pin_name) {
+        static auto format = F("ERROR: %s pin not installed!");
+        Serial.printf(reinterpret_cast<const char *>(format), pin_name);
+    }
+    return error_flag == true;
+}

@@ -14,4 +14,7 @@ bool need_skip_task_iteration(
 
 void show_bit_map(uint8_t flags);
 
+bool is_valid_pin(int8_t pin, bool &error_flag, const __FlashStringHelper *pin_name = nullptr);
+
+
 #endif //AUTOMATIC_GARDEN_SYSTEM_UTILS_H
