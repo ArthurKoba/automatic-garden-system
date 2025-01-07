@@ -46,45 +46,82 @@ void AutomaticGarden::_check_wifi_task() {
     }
 }
 
-void AutomaticGarden::_update_time_task(bool forcibly) {
+void AutomaticGarden::_check_rtc_task(bool forcibly) {
     static uint32_t last_exec = 0;
-    static uint32_t delay_iter_ms = 100;
+    static uint32_t delay_iter_ms = 1000;
     if (need_skip_task_iteration(last_exec, delay_iter_ms, forcibly)) return;
 
     if (not _rtc.isrunning() and not _rtc.begin()) {
         Serial.println(F("Failed running RTC"));
-        delay_iter_ms = 100000;
+        _errors.rtc_error_state = true;
         return;
-    }
+    } else if (not _rtc.now().isValid()) {
+        Serial.println(F("Bad rtc time"));
+        _errors.rtc_error_state = true;
+        _errors.rtc_bad_time_state = true;
+        return;
+    } else _errors.rtc_error_state = false;
 
-    if (_last_wifi_status not_eq WL_CONNECTED) return;
+    if (_rtc.now().year() < 2020 or _rtc.now().year() > 2030) {
+        _errors.rtc_bad_time_state = true;
+        if (delay_iter_ms not_eq 1001) {
+            Serial.println(F("Current year less 2020 or more 2030. Skip update lamps states task!"));
+        }
+        delay_iter_ms = 1001;
+        return;
+    } else _errors.rtc_bad_time_state = false;
+    delay_iter_ms = 1000;
+    _errors.rtc_error_state = false;
+}
 
+void AutomaticGarden::_update_time_task(bool forcibly) {
+    static uint32_t last_exec = 0;
+    static uint32_t delay_iter_ms = 1000;
+    if (need_skip_task_iteration(last_exec, delay_iter_ms, forcibly)) return;
+
+    if (_errors.wifi_not_connected_state) return;
+
+    bool ntp_errors = false;
     if (not _ntp) {
-        Serial.println(F("Failed running NTP Client"));
-        delay_iter_ms = 1000 * 60 * 60;
-        return;
-    }
+        _ntp = &NTP;
+        _ntp->setHost(NTP_SERVER_DOMAIN);
 
-    if (_ntp->hasError()) {
-        Serial.print("NTP Error: ");
+        if (not _ntp->begin()) {
+            Serial.println(F("NTP not started"));
+            _ntp = nullptr;
+        }
+    }
+    if (not _ntp) {
+        ntp_errors = true;
+    } else if (not _ntp->updateNow()) {
+        Serial.println(F("NTP failed get time!"));
+        ntp_errors = true;
+    } else if (_ntp->hasError()) {
+        Serial.print(F("NTP error: "));
         Serial.println(_ntp->readError());
-        if (_ntp->getError() not_eq GyverNTPClient::Error::Timeout) delay_iter_ms = 1000 * 60 * 60;
+        if (_ntp->getError() not_eq GyverNTPClient::Error::Timeout) {
+            delay_iter_ms = 1000 * 60 * 60;
+            ntp_errors = true;
+        }
     }
 
-    if (not _ntp->updateNow()) return;
+    if (ntp_errors) {
+        _errors.ntp_error_state = true;
+        return;
+    } _errors.ntp_error_state = false;
 
-    auto date_time_ntp = DateTime(_ntp->getUnix() + 3600 * TIMEZONE_OFFSET);
+    if (_errors.rtc_error_state) return;
+
     auto date_time_rtc = _rtc.now();
+    auto date_time_ntp = DateTime(_ntp->getUnix() + 3600 * TIMEZONE_OFFSET);
 
     auto delta = float(date_time_ntp.unixtime()) - float(date_time_rtc.unixtime());
 
-    if (delay_iter_ms == 100) {
-        show_time(date_time_ntp, F("The first time received from NTP: "));
-    }
+    if (delay_iter_ms == 100) show_time(date_time_ntp, F("The first time received from NTP: "));
 
     delay_iter_ms = 1000 * 60;
 
-    if (date_time_ntp.year() > 2000 and abs(delta) < 2) return;
+    if (_errors.rtc_bad_time_state or abs(delta) < 2) return;
     show_time(date_time_ntp, F("Got time from NTP: "));
     show_time(date_time_rtc, F("Time from RTC: "));
 
@@ -100,19 +137,7 @@ void AutomaticGarden::_update_lamps_states_task(bool forcibly) {
     static uint32_t delay_iter_ms = 1000;
     if (need_skip_task_iteration(last_exec, delay_iter_ms, forcibly)) return;
 
-    if (not _rtc.isrunning() or _rtc.now().year() < 2000) {
-        _errors.rtc_error_state = true;
-        delay_iter_ms = 100000;
-        if (delay_iter_ms not_eq 100000) {
-            Serial.println(_rtc.isrunning() ?
-                           F("Current year less 2000. Skip update lamps states task!") :
-                           F("RTC unit not started. Skip update lamps states task!")
-            );
-        }
-        return;
-    };
-    _errors.rtc_error_state = false;
-    bool need_skip = true;
+    bool need_skip = _errors.rtc_error_state or _errors.rtc_bad_time_state;
 
     if (_pin_cfg.grow_lamp not_eq -1) {
         need_skip = false;
@@ -128,9 +153,16 @@ void AutomaticGarden::_update_lamps_states_task(bool forcibly) {
     delay_iter_ms = need_skip ? 10000 : 100;
 }
 
+
 AutomaticGarden::AutomaticGarden() {
     _wifi_ssid = String(F(WIFI_SSID));
     _wifi_pass = String(F(WIFI_PASS));
+
+    _errors.wifi_not_connected_state = true;
+    _errors.wifi_error_state = true;
+    _errors.ntp_error_state = true;
+    _errors.rtc_error_state = true;
+    _errors.rtc_bad_time_state = true;
 }
 
 void AutomaticGarden::setup(GardenPinsConfig pin_configs) {
@@ -157,17 +189,15 @@ void AutomaticGarden::setup(GardenPinsConfig pin_configs) {
     else Serial.println(F("ERROR: wifi ssid not set. Trying connect not possible!"));
 
     if (_rtc.begin()) {
-        auto current_time = _rtc.now();
-        show_time(current_time, F("Currently received from RTC unit: "));
-        if (current_time.year() < 2000) Serial.println(F("Current year less 2000. Maybe RTC Unit battery low!"));
-        else _update_lamps_states_task(true);
+        _check_rtc_task(true);
+        _update_lamps_states_task(true);
     } else {
         Serial.println(F("Couldn't find RTC"));
     }
 }
 
 void AutomaticGarden::loop() {
-    _wifi_task();
+    _check_rtc_task();
     _check_wifi_task();
     _update_time_task();
     _update_lamps_states_task();

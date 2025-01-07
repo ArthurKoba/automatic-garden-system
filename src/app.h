@@ -14,6 +14,7 @@ struct ErrorsAppInfo  {
     bool wifi_not_connected_state : 1;
     bool ntp_error_state : 1;
     bool rtc_error_state : 1;
+    bool rtc_bad_time_state : 1;
 };
 
 class AutomaticGarden {
@@ -35,6 +36,8 @@ class AutomaticGarden {
     void _on_disconnect_wifi();
 
     void _check_wifi_task();
+
+    void _check_rtc_task(bool forcibly = false);
 
     void _update_time_task(bool forcibly = false);
 
