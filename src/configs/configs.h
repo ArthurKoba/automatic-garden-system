@@ -5,10 +5,10 @@
 
 #define SOIL_MOISTURE_APIN 17
 
-#define GROW_LAMP_PIN 16
+#define GROW_LAMP_PIN 12
 
 #define RED_LIGHT_PIN 14
-#define GREEN_LIGHT_PIN 12
+#define GREEN_LIGHT_PIN 16
 #define BLUE_LIGHT_PIN 13
 
 
