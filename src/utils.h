@@ -12,4 +12,6 @@ bool need_skip_task_iteration(
         bool forcibly = false
 );
 
+void show_bit_map(uint8_t flags);
+
 #endif //AUTOMATIC_GARDEN_SYSTEM_UTILS_H
