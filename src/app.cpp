@@ -134,25 +134,50 @@ void AutomaticGarden::_update_time_task(bool forcibly) {
 
 void AutomaticGarden::_update_lamps_states_task(bool forcibly) {
     static uint32_t last_exec = 0;
-    static uint32_t delay_iter_ms = 1000;
+    static uint32_t delay_iter_ms = 100;
     if (need_skip_task_iteration(last_exec, delay_iter_ms, forcibly)) return;
 
-    bool need_skip = _errors.rtc_error_state or _errors.rtc_bad_time_state;
+    if (_errors.rtc_error_state or _errors.rtc_bad_time_state) {
+        return _set_default_states_on_pins(false);
+    };
 
-    if (_pin_cfg.grow_lamp not_eq -1) {
-        need_skip = false;
-        auto current_time = DateTime(0, 0, 0,
-                                     _rtc.now().hour(), _rtc.now().minute(), _rtc.now().second()
-        );
+    auto current_time = DateTime(0, 0, 0,_rtc.now().hour(), _rtc.now().minute(), _rtc.now().second());
 
-        if (current_time >= _enable_grow_lamp_time and current_time < _disable_grow_lamp_time) {
-            digitalWrite(_pin_cfg.grow_lamp, true);
-        } else digitalWrite(_pin_cfg.grow_lamp, false);
-    }
+    if (current_time >= _enable_grow_lamp_time and current_time < _disable_grow_lamp_time) {
+        digitalWrite(_pin_cfg.grow_lamp, true);
+    } else digitalWrite(_pin_cfg.grow_lamp, false);
 
-    delay_iter_ms = need_skip ? 10000 : 100;
 }
 
+void AutomaticGarden::_set_default_states_on_pins(bool show_errors) {
+    bool error_pins = false;
+
+    if (is_valid_pin(_pin_cfg.grow_lamp, error_pins, show_errors ? F("grow lamp") : nullptr)) {
+        pinMode(_pin_cfg.grow_lamp, OUTPUT);
+        digitalWrite(_pin_cfg.grow_lamp, false);
+    }
+
+    if (is_valid_pin(_pin_cfg.soil_moisture_analog, error_pins, show_errors ? F("soil moisture") : nullptr)) {
+        pinMode(_pin_cfg.soil_moisture_analog, OUTPUT);
+        digitalWrite(_pin_cfg.soil_moisture_analog, false);
+    }
+
+    if (is_valid_pin(_pin_cfg.red_light_lamp, error_pins, show_errors ? F("red light lamp") : nullptr)) {
+        pinMode(_pin_cfg.red_light_lamp, OUTPUT);
+        digitalWrite(_pin_cfg.red_light_lamp, false);
+    }
+    if (is_valid_pin(_pin_cfg.green_light_lamp, error_pins, show_errors ? F("green light lamp") : nullptr)) {
+        pinMode(_pin_cfg.green_light_lamp, OUTPUT);
+        digitalWrite(_pin_cfg.green_light_lamp, false);
+    }
+
+    if (is_valid_pin(_pin_cfg.blue_light_lamp, error_pins, show_errors ? F("blue light lamp") : nullptr)) {
+        pinMode(_pin_cfg.blue_light_lamp, OUTPUT);
+        digitalWrite(_pin_cfg.blue_light_lamp, false);
+    }
+
+    _errors.pins_error_state = error_pins;
+}
 
 AutomaticGarden::AutomaticGarden() {
     _wifi_ssid = String(F(WIFI_SSID));
@@ -163,27 +188,14 @@ AutomaticGarden::AutomaticGarden() {
     _errors.ntp_error_state = true;
     _errors.rtc_error_state = true;
     _errors.rtc_bad_time_state = true;
+    _errors.pins_error_state = true;
 }
 
 void AutomaticGarden::setup(GardenPinsConfig pin_configs) {
     Serial.println(F("Run Automatic Garden System controller\n"));
 
     _pin_cfg = pin_configs;
-
-    if (_pin_cfg.grow_lamp not_eq -1) pinMode(_pin_cfg.grow_lamp, OUTPUT);
-    else Serial.println(F("ERROR: grow lamp pin not installed!"));
-
-    if (_pin_cfg.soil_moisture_analog not_eq -1) pinMode(_pin_cfg.soil_moisture_analog, OUTPUT);
-    else Serial.println(F("ERROR: soil moisture pin not installed!"));
-
-    if (_pin_cfg.red_light_lamp not_eq -1) pinMode(_pin_cfg.red_light_lamp, OUTPUT);
-    else Serial.println(F("ERROR: red light lamp pin not installed!"));
-
-    if (_pin_cfg.green_light_lamp not_eq -1) pinMode(_pin_cfg.green_light_lamp, OUTPUT);
-    else Serial.println(F("ERROR: green light lamp pin not installed!"));
-
-    if (_pin_cfg.blue_light_lamp not_eq -1) pinMode(_pin_cfg.blue_light_lamp, OUTPUT);
-    else Serial.println(F("ERROR: blue light lamp pin not installed!"));
+    _set_default_states_on_pins(true);
 
     if (_wifi_ssid.length()) _last_wifi_status = WiFi.begin(_wifi_ssid, _wifi_pass);
     else Serial.println(F("ERROR: wifi ssid not set. Trying connect not possible!"));

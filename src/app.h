@@ -15,6 +15,7 @@ struct ErrorsAppInfo  {
     bool ntp_error_state : 1;
     bool rtc_error_state : 1;
     bool rtc_bad_time_state : 1;
+    bool pins_error_state: 1;
 };
 
 class AutomaticGarden {
@@ -43,6 +44,7 @@ class AutomaticGarden {
 
     void _update_lamps_states_task(bool forcibly = false);
 
+    void _set_default_states_on_pins(bool show_errors = false);
 public:
     AutomaticGarden();
 
