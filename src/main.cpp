@@ -19,12 +19,9 @@ __attribute__((used)) void loop() {
     static uint32_t last_check_app_state_time_ms = 0;
     static uint32_t delay_between_iterations = 100;
     if (need_skip_task_iteration(last_check_app_state_time_ms, delay_between_iterations)) return;
-    // todo check
     auto errors = app.get_errors_info();
-    bool have_errors = *reinterpret_cast<uint32_t*>(&errors) not_eq 0;
-    if (not have_errors) {
-        delay_between_iterations = 1000;
-        return digitalWrite(LED_PIN, true);
-    }
+    bool have_errors = *reinterpret_cast<uint8_t *>(&errors) not_eq 0;
+
+    delay_between_iterations = not have_errors ? 1000 : 100;
     digitalWrite(LED_PIN, !digitalRead(LED_PIN));
 }
