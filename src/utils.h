@@ -16,5 +16,6 @@ void show_bit_map(uint8_t flags);
 
 bool is_valid_pin(int8_t pin, bool &error_flag, const __FlashStringHelper *pin_name = nullptr);
 
+uint16_t get_average_analog_pin_value(uint8_t pin, uint8_t number_of_measurements = 5);
 
 #endif //AUTOMATIC_GARDEN_SYSTEM_UTILS_H

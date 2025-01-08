@@ -31,3 +31,9 @@ bool is_valid_pin(int8_t pin, bool &error_flag, const __FlashStringHelper *pin_n
     }
     return error_flag == true;
 }
+
+uint16_t get_average_analog_pin_value(uint8_t pin, uint8_t number_of_measurements) {
+    uint32_t sum = 0;
+    for (int i = 0; i < number_of_measurements; ++i) sum += analogRead(pin);
+    return sum /= number_of_measurements;
+}
