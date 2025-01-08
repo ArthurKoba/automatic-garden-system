@@ -18,8 +18,7 @@ bool need_skip_task_iteration(uint32_t &last_iteration_time, uint32_t time_betwe
 
 void show_bit_map(uint8_t flags) {
     for (int i = 0; i < 8; ++i) {
-        flags  >>= i;
-        Serial.print(0b00000001 & flags);
+        Serial.print(bool((0x1 << i) & flags));
     }
     Serial.println();
 }
