@@ -9,7 +9,6 @@ void AutomaticGarden::_on_connect_wifi() {
 
 void AutomaticGarden::_on_disconnect_wifi() {
     Serial.print(F("Disconnected from Wi-Fi."));
-    if (not _ntp) return;
     _ntp = nullptr;
 }
 
@@ -58,11 +57,10 @@ void AutomaticGarden::_check_rtc_task(bool forcibly) {
     } else if (not _rtc.now().isValid()) {
         Serial.println(F("Bad rtc time"));
         _errors.rtc_error_state = true;
-        _errors.rtc_bad_time_state = true;
         return;
     } else _errors.rtc_error_state = false;
 
-    if (_rtc.now().year() < 2020 or _rtc.now().year() > 2030) {
+    if (not _rtc.now().isValid() or _rtc.now().year() < 2020 or _rtc.now().year() > 2030) {
         _errors.rtc_bad_time_state = true;
         if (delay_iter_ms not_eq 1001) {
             Serial.println(F("Current year less 2020 or more 2030. Skip update lamps states task!"));
@@ -71,7 +69,6 @@ void AutomaticGarden::_check_rtc_task(bool forcibly) {
         return;
     } else _errors.rtc_bad_time_state = false;
     delay_iter_ms = 1000;
-    _errors.rtc_error_state = false;
 }
 
 void AutomaticGarden::_update_time_task(bool forcibly) {
@@ -117,11 +114,14 @@ void AutomaticGarden::_update_time_task(bool forcibly) {
 
     auto delta = float(date_time_ntp.unixtime()) - float(date_time_rtc.unixtime());
 
-    if (delay_iter_ms == 100) show_time(date_time_ntp, F("The first time received from NTP: "));
+    if (delay_iter_ms == 1000) show_time(date_time_ntp, F("The first time received from NTP: "));
 
-    delay_iter_ms = 1000 * 60;
+    delay_iter_ms = _errors.rtc_bad_time_state ? 1000 : 1000 * 60;
 
-    if (_errors.rtc_bad_time_state or abs(delta) < 2) return;
+    if (abs(delta) < 2) {
+        _errors.rtc_bad_time_state = false;
+        return;
+    };
     show_time(date_time_ntp, F("Got time from NTP: "));
     show_time(date_time_rtc, F("Time from RTC: "));
 
