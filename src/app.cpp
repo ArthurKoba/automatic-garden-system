@@ -149,6 +149,25 @@ void AutomaticGarden::_update_lamps_states_task(bool forcibly) {
 
 }
 
+void AutomaticGarden::_check_soil_moisture_task(bool forcibly) {
+    static uint32_t last_exec = 0;
+    static uint32_t delay_iter_ms = 100;
+    if (need_skip_task_iteration(last_exec, delay_iter_ms, forcibly)) return;
+
+    if (_errors.pins_error_state) return;
+
+    auto avg_value = get_average_analog_pin_value(_pin_cfg.soil_moisture_analog);
+
+    if (avg_value < 10) {
+        if (delay_iter_ms not_eq 1001)  Serial.println(F("Soil Moisture pin not connected!"));
+        delay_iter_ms = 1001;
+        return;
+    }
+    delay_iter_ms = 1000 * 60;
+
+    Serial.printf("Soil Moisture pin value: %u\n", avg_value);
+}
+
 void AutomaticGarden::_set_default_states_on_pins(bool show_errors) {
     bool error_pins = false;
 
@@ -158,8 +177,7 @@ void AutomaticGarden::_set_default_states_on_pins(bool show_errors) {
     }
 
     if (is_valid_pin(_pin_cfg.soil_moisture_analog, error_pins, show_errors ? F("soil moisture") : nullptr)) {
-        pinMode(_pin_cfg.soil_moisture_analog, OUTPUT);
-        digitalWrite(_pin_cfg.soil_moisture_analog, false);
+        pinMode(_pin_cfg.soil_moisture_analog, INPUT);
     }
 
     if (is_valid_pin(_pin_cfg.red_light_lamp, error_pins, show_errors ? F("red light lamp") : nullptr)) {
@@ -213,6 +231,7 @@ void AutomaticGarden::loop() {
     _check_wifi_task();
     _update_time_task();
     _update_lamps_states_task();
+    _check_soil_moisture_task();
 }
 
 ErrorsAppInfo AutomaticGarden::get_errors_info() {

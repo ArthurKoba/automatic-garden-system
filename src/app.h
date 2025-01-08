@@ -42,6 +42,8 @@ class AutomaticGarden {
 
     void _update_time_task(bool forcibly = false);
 
+    void _check_soil_moisture_task(bool forcibly = false);
+
     void _update_lamps_states_task(bool forcibly = false);
 
     void _set_default_states_on_pins(bool show_errors = false);
