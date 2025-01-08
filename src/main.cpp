@@ -8,6 +8,7 @@ __attribute__((used)) void setup() {
     pinMode(LED_PIN, OUTPUT);
 
     Serial.begin(SERIAL_BAUDRATE);
+    delay(100);
     Serial.println();
 
     app.setup();
