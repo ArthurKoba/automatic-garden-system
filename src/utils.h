@@ -6,6 +6,12 @@
 
 void show_time(const DateTime& time_, const __FlashStringHelper *prefix = nullptr);
 
+bool is_valid_time(const DateTime &time_);
+
+DateTime get_date_time_from_seconds(uint32_t seconds);
+
+String get_time(const DateTime &time_);
+
 bool need_skip_task_iteration(
         uint32_t &last_iteration_time,
         uint32_t time_between_iterations_ms = 1000,

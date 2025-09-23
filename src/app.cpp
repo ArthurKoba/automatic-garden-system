@@ -1,174 +1,238 @@
 #include "app.h"
 
-void AutomaticGarden::_on_connect_wifi() {
-    Serial.print(F("Connected to Wi-Fi. IP: "));
-    Serial.println(_wifi.localIP().toString().c_str());
-    _errors.wifi_error_state = false;
-    _update_time_task(true);
-}
+void Application::setup() {
+    Serial.print(F("Start project "));
+    Serial.println(F(PROJECT_NAME));
 
-void AutomaticGarden::_on_disconnect_wifi() {
-    Serial.print(F("Disconnected from Wi-Fi."));
-    _ntp = nullptr;
-}
+#ifdef ESP32
+    LittleFS.begin(true);
+#else
+    LittleFS.begin();
+#endif
+    WiFi.mode(WIFI_AP_STA);
+    _settings.begin();
+    _settings.onBuild([this](sets::Builder &b) {
+        {
+            sets::Group g(b, "System statuses");
+            b.LED(kk::system_enabled, "System enabled");
+            b.LED(kk::grow_lamp_status, "Grow lamp status");
+            b.Label(kk::rtc_time, "RTC time");
+            b.Label(kk::ntp_time, "NTP time");
 
-void AutomaticGarden::_check_wifi_task() {
-    static uint32_t last_exec = 0;
-    if (need_skip_task_iteration(last_exec, 100)) return;
-
-    wl_status_t status = _wifi.status();
-
-    if (status == _last_wifi_status) return;
-    _last_wifi_status = status;
-
-    switch (status) {
-        case WL_CONNECTED:
-            _on_connect_wifi();
-            _errors.wifi_not_connected_state = false;
-            break;
-        case WL_CONNECTION_LOST:
-        case WL_DISCONNECTED:
-            _on_disconnect_wifi();
-            _errors.wifi_not_connected_state = true;
-            break;
-        case WL_IDLE_STATUS:
-        case WL_SCAN_COMPLETED:
-        case WL_WRONG_PASSWORD:
-        case WL_NO_SSID_AVAIL:
-        case WL_NO_SHIELD:
-        case WL_CONNECT_FAILED:
-            _errors.wifi_error_state = true;
-            break;
-    }
-    if (status == WL_WRONG_PASSWORD) {
-        Serial.println(F("Wrong Wi-Fi password."));
-    }
-}
-
-void AutomaticGarden::_check_rtc_task(bool forcibly) {
-    static uint32_t last_exec = 0;
-    static uint32_t delay_iter_ms = 1000;
-    if (need_skip_task_iteration(last_exec, delay_iter_ms, forcibly)) return;
-
-    if (not _rtc.isrunning() and not _rtc.begin()) {
-        Serial.println(F("Failed running RTC"));
-        _errors.rtc_error_state = true;
-        return;
-    } else if (not _rtc.now().isValid()) {
-        Serial.println(F("Bad rtc time"));
-        _errors.rtc_error_state = true;
-        return;
-    } else _errors.rtc_error_state = false;
-
-    if (not _rtc.now().isValid() or _rtc.now().year() < 2020 or _rtc.now().year() > 2030) {
-        _errors.rtc_bad_time_state = true;
-        if (delay_iter_ms not_eq 1001) {
-            Serial.println(F("Current year less 2020 or more 2030. Skip update lamps states task!"));
         }
-        delay_iter_ms = 1001;
-        return;
-    } else _errors.rtc_bad_time_state = false;
-    delay_iter_ms = 1000;
-}
-
-void AutomaticGarden::_update_time_task(bool forcibly) {
-    static uint32_t last_exec = 0;
-    static uint32_t delay_iter_ms = 1000;
-    if (need_skip_task_iteration(last_exec, delay_iter_ms, forcibly)) return;
-
-    if (_errors.wifi_not_connected_state) return;
-
-    bool ntp_errors = false;
-    if (not _ntp) {
-        _ntp = &NTP;
-        _ntp->setHost(NTP_SERVER_DOMAIN);
-
-        if (not _ntp->begin()) {
-            Serial.println(F("NTP not started"));
-            _ntp = nullptr;
+        {
+            sets::Group g(b, "System errors");
+            b.Label(kk::pins_error, "Pins errors");
+            b.Label(kk::rtc_state_error, "RTC error state");
+            b.Label(kk::rtc_bad_time_error, "RTC bad time");
+            b.Label(kk::ntp_state_error, "NTP error state");
         }
+        {
+            sets::Group g(b, "System");
+            if (b.Switch("Enabled", &_system_enabled)) _set_system_enables_value(_system_enabled);
+//            if (b.Switch("Led enabled", &_led_enabled)) {
+//                _db[kk::led_enabled] = _led_enabled;
+//            };
+//            if (b.Color(kk::led_color, "Led Color", &_led_color)) {
+//                printf("%u \n", _led_color);
+//            }
+
+            if (b.Switch("Grow lamp enabled", &_grow_lamp_enabled)) _set_grow_lamp_value(_grow_lamp_enabled);
+            if (b.Time(kk::enable_grow_lamp_time, "Enable grow lamp time")) {
+                _enable_grow_lamp_time = get_date_time_from_seconds(_db[kk::enable_grow_lamp_time]);
+            };
+            if (b.Time(kk::disable_grow_lamp_time, "Disable grow lamp time")) {
+                _disable_grow_lamp_time = get_date_time_from_seconds(_db[kk::disable_grow_lamp_time]);
+            };
+        }
+
+        {
+            sets::Group g(b, "WiFi");
+            b.Input(kk::wifi_ssid, "SSID");
+            b.Pass(kk::wifi_pass, "Password");
+            if (b.Button(kk::apply_wifi_params, "Save & Restart")) {
+                _db.update();  // сохраняем БД не дожидаясь таймаута
+                EspClass::restart();
+            }
+        }
+    });
+    _settings.onUpdate([this](sets::Updater &u) {
+        _db[kk::rtc_time] = get_time(_last_rtc_time);
+        _db[kk::ntp_time] = get_time(_last_ntp_time);
+    });
+
+
+    _db.begin();
+    _db.init(kk::wifi_ssid, "");
+    _db.init(kk::wifi_pass, "");
+    _db.init(kk::system_enabled, _system_enabled);
+    _set_system_enables_value(_db[kk::system_enabled]);
+
+    _db.init(kk::grow_lamp_enabled, true);
+    _db.init(kk::grow_lamp_status, false);
+    _db[kk::grow_lamp_status] = false;
+    _set_grow_lamp_value(_db[kk::grow_lamp_enabled]);
+
+
+
+    _db.init(kk::led_enabled, false);
+    _db.init(kk::led_color, uint32_t(255 << 16) + 255);
+    _set_led_value_and_color(_db[kk::led_enabled], _db[kk::led_color]);
+
+    _db.init(kk::disable_grow_lamp_time, 23 * 60 * 60);
+    _db.init(kk::enable_grow_lamp_time, 7 * 60 * 60);
+
+    _disable_grow_lamp_time = get_date_time_from_seconds(_db[kk::disable_grow_lamp_time]);
+    _enable_grow_lamp_time = get_date_time_from_seconds(_db[kk::enable_grow_lamp_time]);
+
+    _db[kk::rtc_state_error] = not _rtc.begin();
+    _db[kk::pins_error] = _set_default_states_on_pins();
+
+    if (not _db[kk::rtc_state_error] and is_valid_time(_rtc.now())) {
+        _last_rtc_time = _rtc.now();
+    } else {
+        _db[kk::rtc_bad_time_error] = true;
     }
-    if (not _ntp) {
-        ntp_errors = true;
-    } else if (not _ntp->updateNow()) {
-        Serial.println(F("NTP failed get time!"));
-        ntp_errors = true;
-    } else if (_ntp->hasError()) {
-        Serial.print(F("NTP error: "));
-        Serial.println(_ntp->readError());
-        if (_ntp->getError() not_eq GyverNTPClient::Error::Timeout) {
-            delay_iter_ms = 1000 * 60 * 60;
+
+    _set_system_enables_value(_db[kk::system_enabled]);
+
+    _wifi_connect_task.set_task_function([this](Task &current_task) {
+        static size_t tries = _db[kk::wifi_ssid].length() ? 20 : 0;
+        if (tries == 20) {
+            printf("Try connect to WiFi... SSID: %s\n", _db[kk::wifi_ssid].toString().c_str());
+            WiFi.begin(_db[kk::wifi_ssid], _db[kk::wifi_pass]);
+        } else if (tries == 1) {
+            printf("Failed connect to WiFI...\n");
+        } else if (not tries) {
+            printf("Enable STA: %s\n", PROJECT_NAME);
+            WiFi.softAP(PROJECT_NAME);
+            return current_task.disable();
+        } else if (WiFi.status() == WL_CONNECTED) {
+            printf("Connected to WiFI. IP: %s\n", WiFi.localIP().toString().c_str());
+            return current_task.disable();
+        } else {
+            printf("Try connect to wifi: %d\n", tries);
+        }
+        tries--;
+    });
+
+    _update_grow_lamp_value_task.set_task_function([this](Task &current_task) {
+        if (not _system_enabled or not _grow_lamp_enabled or not is_valid_time(_last_rtc_time)) {
+            _db[kk::grow_lamp_status] = false;
+            digitalWrite(_pin_cfg.grow_lamp, false);
+            return;
+        }
+        auto current_time = DateTime(0, 0, 0, _last_rtc_time.hour(), _last_rtc_time.minute(), _last_rtc_time.second());
+        bool status = current_time >= _enable_grow_lamp_time and current_time < _disable_grow_lamp_time;
+        _db[kk::grow_lamp_status] = status;
+        digitalWrite(_pin_cfg.grow_lamp, status);
+    });
+
+    _check_rtc_task.set_task_function([this](Task &current_task) {
+        if (not _rtc.isrunning() and not _rtc.begin()) {
+            Serial.println(F("Failed running RTC"));
+            _db[kk::rtc_state_error] = true;
+            return;
+        } else if (not is_valid_time(_rtc.now())) {
+            _db[kk::rtc_bad_time_error] = true;
+        } else {
+            _last_rtc_time = _rtc.now();
+            _db[kk::rtc_bad_time_error] = false;
+        }
+        if (_db[kk::rtc_bad_time_error] and is_valid_time(_last_ntp_time)) {
+            _rtc.adjust(_last_ntp_time);
+        }
+        _db[kk::rtc_state_error] = false;
+    });
+
+    _check_ntp_task.set_task_function([this](Task &current_task) {
+        if (WiFi.status() not_eq WL_CONNECTED) return;
+
+
+        bool ntp_errors = false;
+        if (not _ntp) {
+            _ntp = &NTP;
+            _ntp->setHost(NTP_SERVER_DOMAIN);
+            if (not _ntp->begin()) {
+                Serial.println(F("NTP not started"));
+                _ntp = nullptr;
+            }
+        }
+
+        if (not _ntp) {
             ntp_errors = true;
+        } else if (not _ntp->updateNow()) {
+            Serial.println(F("NTP failed get time!"));
+            ntp_errors = true;
+        } else if (_ntp->hasError()) {
+            Serial.print(F("NTP error: "));
+            Serial.println(_ntp->readError());
+            if (_ntp->getError() not_eq GyverNTPClient::Error::Timeout) {
+                ntp_errors = true;
+            }
         }
-    }
+        _db[kk::ntp_state_error] = ntp_errors;
+        if (ntp_errors) return;
+        if (not _rtc.isrunning()) return;
 
-    if (ntp_errors) {
-        _errors.ntp_error_state = true;
-        return;
-    } _errors.ntp_error_state = false;
+        auto date_time_rtc = _rtc.now();
+        _last_ntp_time = DateTime(_ntp->getUnix() + 3600 * TIMEZONE_OFFSET);
 
-    if (_errors.rtc_error_state) return;
+        auto delta = float(_last_ntp_time.unixtime()) - float(date_time_rtc.unixtime());
 
-    auto date_time_rtc = _rtc.now();
-    auto date_time_ntp = DateTime(_ntp->getUnix() + 3600 * TIMEZONE_OFFSET);
+        if (abs(delta) < 2) {
+            _db[kk::rtc_bad_time_error] = true;
+            return;
+        };
+        show_time(_last_ntp_time, F("Got time from NTP: "));
+        show_time(date_time_rtc, F("Time from RTC: "));
 
-    auto delta = float(date_time_ntp.unixtime()) - float(date_time_rtc.unixtime());
+        Serial.print(F("Delta time seconds: "));
+        Serial.println(delta);
+        _rtc.adjust(_last_ntp_time);
+        Serial.println(F("Correction RTC time from NTP."));
+    });
 
-    if (delay_iter_ms == 1000) show_time(date_time_ntp, F("The first time received from NTP: "));
+//    _update_led_value_task.set_task_function([this] (Task &current_task) {
+//        if (not _system_enabled or not _led_enabled) {
+//            digitalWrite(_pin_cfg.red_light_lamp, false);
+//            digitalWrite(_pin_cfg.green_light_lamp, false);
+//            digitalWrite(_pin_cfg.blue_light_lamp, false);
+//            return;
+//        }
+//        uint8_t red = (_led_color >> 16) & 0x000000FF;
+//        uint8_t green = (_led_color >> 8) & 0x000000FF;
+//        uint8_t blue = _led_color & 0x000000FF;
+//
+//        analogWrite(_pin_cfg.red_light_lamp, red);
+//        analogWrite(_pin_cfg.green_light_lamp, green);
+//        analogWrite(_pin_cfg.blue_light_lamp, blue);
+//    });
 
-    delay_iter_ms = _errors.rtc_bad_time_state ? 1000 : 1000 * 60;
+    _error_blink_task.set_task_function([this](Task &current_task) {
 
-    if (abs(delta) < 2) {
-        _errors.rtc_bad_time_state = false;
-        return;
-    };
-    show_time(date_time_ntp, F("Got time from NTP: "));
-    show_time(date_time_rtc, F("Time from RTC: "));
+    });
 
-    Serial.print(F("Delta time seconds: "));
-    Serial.println(delta);
-    _rtc.adjust(date_time_ntp);
-    Serial.println(F("Correction RTC time from NTP."));
-    _update_lamps_states_task(true);
+    _tasks.push_back(_wifi_connect_task);
+    _tasks.push_back(_update_grow_lamp_value_task);
+//    _tasks.push_back(_update_led_value_task);
+    _tasks.push_back(_check_rtc_task);
+    _tasks.push_back(_error_blink_task);
 }
 
-void AutomaticGarden::_update_lamps_states_task(bool forcibly) {
-    static uint32_t last_exec = 0;
-    static uint32_t delay_iter_ms = 100;
-    if (need_skip_task_iteration(last_exec, delay_iter_ms, forcibly)) return;
-
-    if (_errors.rtc_error_state or _errors.rtc_bad_time_state) {
-        return _set_default_states_on_pins(false);
-    };
-
-    auto current_time = DateTime(0, 0, 0,_rtc.now().hour(), _rtc.now().minute(), _rtc.now().second());
-
-    if (current_time >= _enable_grow_lamp_time and current_time < _disable_grow_lamp_time) {
-        digitalWrite(_pin_cfg.grow_lamp, true);
-    } else digitalWrite(_pin_cfg.grow_lamp, false);
-
+void Application::loop() {
+    _settings.tick();
+    _db.tick();
+    for (Task &task: _tasks) task.tick();
 }
 
-void AutomaticGarden::_check_soil_moisture_task(bool forcibly) {
-    static uint32_t last_exec = 0;
-    static uint32_t delay_iter_ms = 100;
-    if (need_skip_task_iteration(last_exec, delay_iter_ms, forcibly)) return;
-
-    if (_errors.pins_error_state) return;
-
-    auto avg_value = get_average_analog_pin_value(_pin_cfg.soil_moisture_analog);
-
-    if (avg_value < 10) {
-        if (delay_iter_ms not_eq 1001)  Serial.println(F("Soil Moisture pin not connected!"));
-        delay_iter_ms = 1001;
-        return;
-    }
-    delay_iter_ms = 1000 * 60;
-
-    Serial.printf("Soil Moisture pin value: %u\n", avg_value);
+void Application::_set_grow_lamp_value(bool value) {
+    _grow_lamp_enabled = value;
+    _db[kk::grow_lamp_enabled] = _grow_lamp_enabled;
 }
 
-void AutomaticGarden::_set_default_states_on_pins(bool show_errors) {
+
+bool Application::_set_default_states_on_pins(bool show_errors) const {
     bool error_pins = false;
 
     if (is_valid_pin(_pin_cfg.grow_lamp, error_pins, show_errors ? F("grow lamp") : nullptr)) {
@@ -193,47 +257,17 @@ void AutomaticGarden::_set_default_states_on_pins(bool show_errors) {
         pinMode(_pin_cfg.blue_light_lamp, OUTPUT);
         digitalWrite(_pin_cfg.blue_light_lamp, false);
     }
-
-    _errors.pins_error_state = error_pins;
+    return error_pins;
 }
 
-AutomaticGarden::AutomaticGarden() {
-    _wifi_ssid = String(F(WIFI_SSID));
-    _wifi_pass = String(F(WIFI_PASS));
 
-    _errors.wifi_not_connected_state = true;
-    _errors.wifi_error_state = true;
-    _errors.ntp_error_state = true;
-    _errors.rtc_error_state = true;
-    _errors.rtc_bad_time_state = true;
-    _errors.pins_error_state = true;
+void Application::_set_system_enables_value(bool value) {
+    _system_enabled = value;
+    _db[kk::system_enabled] = _system_enabled;
 }
 
-void AutomaticGarden::setup(GardenPinsConfig pin_configs) {
-    Serial.println(F("Run Automatic Garden System controller\n"));
-
-    _pin_cfg = pin_configs;
-    _set_default_states_on_pins(true);
-
-    if (_wifi_ssid.length()) _last_wifi_status = WiFi.begin(_wifi_ssid, _wifi_pass);
-    else Serial.println(F("ERROR: wifi ssid not set. Trying connect not possible!"));
-
-    if (_rtc.begin()) {
-        _check_rtc_task(true);
-        _update_lamps_states_task(true);
-    } else {
-        Serial.println(F("Couldn't find RTC"));
-    }
-}
-
-void AutomaticGarden::loop() {
-    _check_rtc_task();
-    _check_wifi_task();
-    _update_time_task();
-    _update_lamps_states_task();
-    _check_soil_moisture_task();
-}
-
-ErrorsAppInfo AutomaticGarden::get_errors_info() {
-    return _errors;
+void Application::_set_led_value_and_color(bool value, uint32_t color) {
+//    _led_enabled = value;
+//    _db[kk::led_enabled] = _led_enabled;
+//    _led_color = color;
 }
