@@ -116,6 +116,7 @@ void Application::setup() {
             return current_task.disable();
         } else if (WiFi.status() == WL_CONNECTED) {
             printf("Connected to WiFI. IP: %s\n", WiFi.localIP().toString().c_str());
+            WiFi.mode(WIFI_STA);
             return current_task.disable();
         } else {
             printf("Try connect to wifi: %d\n", tries);
