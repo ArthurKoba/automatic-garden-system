@@ -37,3 +37,7 @@ void Task::disable() {
     _enabled = false;
     _last_exec = 0;
 }
+
+void Task::set_delta_exec_ms(uint32_t delta) {
+    _delta_exec_ms = delta;
+}

@@ -20,6 +20,8 @@ public:
 
     void force_call_function();
 
+    void set_delta_exec_ms(uint32_t delta);
+
     void disable();
     void enable();
 

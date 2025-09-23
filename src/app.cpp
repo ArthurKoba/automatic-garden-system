@@ -61,7 +61,6 @@ void Application::setup() {
         _db[kk::ntp_time] = get_time(_last_ntp_time);
     });
 
-
     _db.begin();
     _db.init(kk::wifi_ssid, "");
     _db.init(kk::wifi_pass, "");
@@ -72,8 +71,6 @@ void Application::setup() {
     _db.init(kk::grow_lamp_status, false);
     _db[kk::grow_lamp_status] = false;
     _set_grow_lamp_value(_db[kk::grow_lamp_enabled]);
-
-
 
     _db.init(kk::led_enabled, false);
     _db.init(kk::led_color, uint32_t(255 << 16) + 255);
@@ -210,7 +207,9 @@ void Application::setup() {
 //    });
 
     _error_blink_task.set_task_function([this](Task &current_task) {
-
+        bool have_errors = _db[kk::pins_error] or _db[kk::rtc_state_error] or _db[kk::rtc_bad_time_error] or _db[kk::ntp_state_error];
+        current_task.set_delta_exec_ms(not have_errors ? 1000 : 100);
+        digitalWrite(_pin_cfg.system, !digitalRead(_pin_cfg.system));
     });
 
     _tasks.push_back(_wifi_connect_task);
@@ -238,6 +237,11 @@ bool Application::_set_default_states_on_pins(bool show_errors) const {
     if (is_valid_pin(_pin_cfg.grow_lamp, error_pins, show_errors ? F("grow lamp") : nullptr)) {
         pinMode(_pin_cfg.grow_lamp, OUTPUT);
         digitalWrite(_pin_cfg.grow_lamp, false);
+    }
+
+    if (is_valid_pin(_pin_cfg.system, error_pins, show_errors ? F("system") : nullptr)) {
+        pinMode(_pin_cfg.system, OUTPUT);
+        digitalWrite(_pin_cfg.system, false);
     }
 
     if (is_valid_pin(_pin_cfg.soil_moisture_analog, error_pins, show_errors ? F("soil moisture") : nullptr)) {
