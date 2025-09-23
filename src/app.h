@@ -22,6 +22,7 @@ DB_KEYS(
         system_enabled,
         led_enabled,
         led_color,
+        ntp_server,
         grow_lamp_status,
         grow_lamp_enabled,
         rtc_time,
@@ -72,7 +73,7 @@ private:
     Task _update_grow_lamp_value_task = Task(1000);
 //    Task _update_led_value_task = Task(100);
     Task _check_rtc_task = Task(1000);
-    Task _check_ntp_task = Task(10000);
+    Task _check_ntp_task = Task(1000);
     Task _error_blink_task = Task(100);
 
     std::vector<Task> _tasks;

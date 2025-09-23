@@ -44,6 +44,13 @@ void Application::setup() {
             if (b.Time(kk::disable_grow_lamp_time, "Disable grow lamp time")) {
                 _disable_grow_lamp_time = get_date_time_from_seconds(_db[kk::disable_grow_lamp_time]);
             };
+            if (b.Input(kk::ntp_server, "NTP Server")) {
+                if (not _db[kk::ntp_server].length()) {
+                    _db[kk::ntp_server] = NTP_SERVER_DOMAIN;
+                }
+                _ntp = nullptr;
+                _check_ntp_task.force_call_function();
+            };
         }
 
         {
@@ -64,6 +71,9 @@ void Application::setup() {
     _db.begin();
     _db.init(kk::wifi_ssid, "");
     _db.init(kk::wifi_pass, "");
+    _db.init(kk::ntp_server, NTP_SERVER_DOMAIN);
+
+
     _db.init(kk::system_enabled, _system_enabled);
     _set_system_enables_value(_db[kk::system_enabled]);
 
@@ -149,7 +159,8 @@ void Application::setup() {
         bool ntp_errors = false;
         if (not _ntp) {
             _ntp = &NTP;
-            _ntp->setHost(NTP_SERVER_DOMAIN);
+            _ntp->setHost(_db[kk::ntp_server].length() ? _db[kk::ntp_server].toString() : NTP_SERVER_DOMAIN);
+            _ntp->setPeriod(1);
             if (not _ntp->begin()) {
                 Serial.println(F("NTP not started"));
                 _ntp = nullptr;
