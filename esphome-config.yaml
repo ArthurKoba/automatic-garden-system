@@ -1,0 +1,402 @@
+logger:
+  level: INFO
+
+api:
+  #password: !secret api_password
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Garden-Node Fallback Hotspot"
+    password: ""
+
+captive_portal:
+
+web_server:
+  port: 80
+  auth:
+    username: !secret web_server_user
+    password: !secret web_server_password
+
+i2c:
+  sda: GPIO4
+  scl: GPIO5
+  scan: false
+
+esp8266:
+  board: nodemcuv2
+
+substitutions:
+  SOIL_MOISTURE_UPDATE_TIME: 60s
+  UNCONNECTED_VOLTAGE_LIMIT_OF_SOIL_MOISTURE: 0.1
+  SOIL_MOISTURE_MIN_VOLTAGE_WHEN_WATER: 0.28
+  SOIL_MOISTURE_MAX_VOLTAGE_WHEN_AIR: 0.62
+  SOIL_MOISTURE_PREFIX: Plant
+  AHT30_UPDATE_TIME: 60s
+  AHT30_PREFIX: Plant
+  GROW_LAMP_PREFIX: Grow Lamp
+  DIFF_SEC_RTC_AND_HA_FOR_NEED_UPDATE_TIME: 10
+
+esphome:
+  name: garden-system
+  on_boot:
+    priority: -100
+    then:
+      # Инициализация настроек при первом запуске
+      - lambda: |-
+          if (!id(initialized_flag)) {
+            ESP_LOGI("main", "First boot detected, initializing default settings");
+            id(triggers_enabled_global) = true;
+            id(on_hour_global) = 7;
+            id(on_minute_global) = 0;
+            id(off_hour_global) = 23;
+            id(off_minute_global) = 0;
+            id(initialized_flag) = true;
+            ESP_LOGI("main", "Default settings initialized: ON at 07:00, OFF at 23:00, Schedule Enabled");
+          }
+
+      # Читаем RTC время при загрузке
+      - ds1307.read_time:
+      # Загружаем сохранённые значения из flash
+      - lambda: |-
+          id(triggers_enabled).publish_state(id(triggers_enabled_global));
+          id(time_synced_sensor).publish_state(id(time_synced_global));
+          id(on_hour_input).publish_state(id(on_hour_global));
+          id(on_minute_input).publish_state(id(on_minute_global));
+          id(off_hour_input).publish_state(id(off_hour_global));
+          id(off_minute_input).publish_state(id(off_minute_global));
+
+      # Даём время на подключение к HA (3 секунды)
+      - delay: 3s
+      # Проверяем необходимость включения лампы
+      - lambda: |-
+          if (!id(time_synced_global)) {
+            ESP_LOGW("main", "Time never synced, skipping lamp control");
+            return;
+          }
+          if (!id(triggers_enabled_global)) {
+            ESP_LOGI("main", "Triggers disabled, skipping lamp control");
+            return;
+          }
+          auto time = id(rtc_time).now();
+          int current_minutes = time.hour * 60 + time.minute;
+          int on_minutes = id(on_hour_global) * 60 + id(on_minute_global);
+          int off_minutes = id(off_hour_global) * 60 + id(off_minute_global);
+          
+          bool should_be_on = false;
+          if (on_minutes < off_minutes) {
+            should_be_on = (current_minutes >= on_minutes && current_minutes < off_minutes);
+          } else {
+            should_be_on = (current_minutes >= on_minutes || current_minutes < off_minutes);
+          }
+          
+          if (should_be_on) {
+            ESP_LOGI("main", "Time is %02d:%02d, lamp should be ON", time.hour, time.minute);
+            id(grow_lamp).turn_on();
+          } else {
+            ESP_LOGI("main", "Time is %02d:%02d, lamp should be OFF", time.hour, time.minute);
+            id(grow_lamp).turn_off();
+          }
+
+# Глобальные переменные для хранения во flash
+globals:
+  - id: initialized_flag
+    type: bool
+    restore_value: yes
+    initial_value: 'false'
+  - id: triggers_enabled_global
+    type: bool
+    restore_value: yes
+    initial_value: 'true'
+  - id: on_hour_global
+    type: int
+    restore_value: yes
+    initial_value: '7'
+  - id: on_minute_global
+    type: int
+    restore_value: yes
+    initial_value: '0'
+  - id: off_hour_global
+    type: int
+    restore_value: yes
+    initial_value: '23'
+  - id: off_minute_global
+    type: int
+    restore_value: yes
+    initial_value: '0'
+  - id: time_synced_global
+    type: bool
+    restore_value: yes
+    initial_value: 'false'
+  # Последняя минута когда было выполнено переключение
+  - id: last_switched_minute
+    type: int
+    restore_value: no
+    initial_value: '-1'
+
+switch:
+  - platform: gpio
+    id: grow_lamp
+    name: "${GROW_LAMP_PREFIX} State"
+    pin: GPIO12
+    restore_mode: ALWAYS_OFF
+
+  - platform: template
+    id: triggers_enabled
+    name: "${GROW_LAMP_PREFIX} Schedule Enabled"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    icon: "mdi:clock-check"
+    on_turn_on:
+      - lambda: |-
+          id(triggers_enabled_global) = true;
+    on_turn_off:
+      - lambda: |-
+          id(triggers_enabled_global) = false;
+
+sensor:
+  - platform: aht10
+    variant: AHT20
+    address: 0x38
+    temperature:
+      name: "${AHT30_PREFIX} Temperature"
+      device_class: temperature
+      state_class: measurement
+    humidity:
+      name: "${AHT30_PREFIX} Humidity"
+      device_class: humidity
+      state_class: measurement
+    update_interval: ${AHT30_UPDATE_TIME}
+
+  - platform: adc
+    id: soil_moisture_raw
+    pin: A0
+    name: "${SOIL_MOISTURE_PREFIX} Soil Moisture Raw"
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 3
+    update_interval: ${SOIL_MOISTURE_UPDATE_TIME}
+    filters:
+      - sliding_window_moving_average:
+          window_size: 3
+          send_every: 1
+    on_value:
+      then:
+        - lambda: |-
+            id(soil_moisture_percent).update();
+
+  - platform: template
+    id: soil_moisture_percent
+    name: "${SOIL_MOISTURE_PREFIX} Soil Moisture"
+    device_class: humidity
+    state_class: measurement
+    unit_of_measurement: "%"
+    accuracy_decimals: 1
+    icon: "mdi:water-percent"
+
+    lambda: |-
+      float raw_voltage = id(soil_moisture_raw).state;
+      
+      if (raw_voltage < ${UNCONNECTED_VOLTAGE_LIMIT_OF_SOIL_MOISTURE}) {
+        ESP_LOGW("soil_moisture", "Sensor disconnected, returning NAN");
+        return NAN;  // Возвращаем NAN для отображения как "недоступно" в HA
+      }
+      
+      // Преобразование напряжения в проценты
+      // Предполагаем линейную зависимость
+      float voltage_min = ${SOIL_MOISTURE_MIN_VOLTAGE_WHEN_WATER};
+      float voltage_max = ${SOIL_MOISTURE_MAX_VOLTAGE_WHEN_AIR};
+      
+      // Ограничиваем значения в пределах калибровочного диапазона
+      if (raw_voltage <= voltage_min) {
+        return 100.0f;
+      } else if (raw_voltage >= voltage_max) {
+        return 0.0f;
+      }
+      
+      // Линейная интерполяция
+      float moisture_percent = 100.0f * (1.0f - (raw_voltage - voltage_min) / (voltage_max - voltage_min));
+      return moisture_percent;
+
+binary_sensor:
+  - platform: template
+    id: time_synced_sensor
+    name: "RTC Time Synchronized"
+    icon: "mdi:clock-check-outline"
+    device_class: connectivity
+
+text_sensor:
+  - platform: template
+    name: "RTC Time"
+    icon: "mdi:clock-digital"
+    update_interval: 10s
+    lambda: |-
+      auto time = id(rtc_time).now();
+      char buf[32];  
+      snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d:%02d",
+                             time.year, time.month, time.day_of_month,
+                             time.hour, time.minute, time.second);
+      return {buf};
+
+time:
+  - platform: ds1307
+    id: rtc_time
+    address: 0x68
+    timezone: Europe/Moscow
+    update_interval: never
+
+  - platform: homeassistant
+    id: ha_time
+    timezone: Europe/Moscow
+    on_time_sync:
+      then:
+        - lambda: |-
+            // Получаем текущее время от HA и RTC
+            auto ha_now = id(ha_time).now();
+            auto rtc_now = id(rtc_time).now();
+            
+            // Вычисляем разницу в секундах
+            int ha_total_seconds = ha_now.hour * 3600 + ha_now.minute * 60 + ha_now.second;
+            int rtc_total_seconds = rtc_now.hour * 3600 + rtc_now.minute * 60 + rtc_now.second;
+            int diff_seconds = abs(ha_total_seconds - rtc_total_seconds);
+            
+            if (diff_seconds > ${DIFF_SEC_RTC_AND_HA_FOR_NEED_UPDATE_TIME}) {
+              ESP_LOGW("main", "RTC time differs by %d seconds, updating RTC", diff_seconds);
+              id(rtc_time).write_time();
+            } else {
+              ESP_LOGI("main", "RTC time is accurate (diff: %d seconds)", diff_seconds);
+            }
+            
+            id(time_synced_global) = true;
+            id(time_synced_sensor).publish_state(true);
+            ESP_LOGI("main", "Time synced with Home Assistant");
+
+number:
+  - platform: template
+    id: on_hour_input
+    name: "${GROW_LAMP_PREFIX} ON Hour"
+    icon: "mdi:clock-start"
+    optimistic: true
+    min_value: 0
+    max_value: 23
+    step: 1
+    mode: box
+    restore_value: false
+    on_value:
+      then:
+        - lambda: |-
+            id(on_hour_global) = (int)x;
+            id(last_switched_minute) = -1;
+            ESP_LOGI("main", "ON time set to: %02d:%02d", id(on_hour_global), id(on_minute_global));
+
+  - platform: template
+    id: on_minute_input
+    name: "${GROW_LAMP_PREFIX} ON Minute"
+    icon: "mdi:clock-start"
+    optimistic: true
+    min_value: 0
+    max_value: 59
+    step: 1
+    mode: box
+    restore_value: false
+    on_value:
+      then:
+        - lambda: |-
+            id(on_minute_global) = (int)x;
+            id(last_switched_minute) = -1;
+            ESP_LOGI("main", "ON time set to: %02d:%02d", id(on_hour_global), id(on_minute_global));
+
+  - platform: template
+    id: off_hour_input
+    name: "${GROW_LAMP_PREFIX} OFF Hour"
+    icon: "mdi:clock-end"
+    optimistic: true
+    min_value: 0
+    max_value: 23
+    step: 1
+    mode: box
+    restore_value: false
+    on_value:
+      then:
+        - lambda: |-
+            id(off_hour_global) = (int)x;
+            id(last_switched_minute) = -1;
+            ESP_LOGI("main", "OFF time set to: %02d:%02d", id(off_hour_global), id(off_minute_global));
+
+  - platform: template
+    id: off_minute_input
+    name: "${GROW_LAMP_PREFIX} OFF Minute"
+    icon: "mdi:clock-end"
+    optimistic: true
+    min_value: 0
+    max_value: 59
+    step: 1
+    mode: box
+    restore_value: false
+    on_value:
+      then:
+        - lambda: |-
+            id(off_minute_global) = (int)x;
+            id(last_switched_minute) = -1;
+            ESP_LOGI("main", "OFF time set to: %02d:%02d", id(off_hour_global), id(off_minute_global));
+
+interval:
+  - interval: 5s
+    then:
+      - lambda: |-
+          // Проверяем, что время синхронизировалось хотя бы раз
+          if (!id(time_synced_global)) {
+            return;
+          }
+          
+          auto time = id(rtc_time).now();
+          int current_minutes = time.hour * 60 + time.minute;
+          int on_minutes = id(on_hour_global) * 60 + id(on_minute_global);
+          int off_minutes = id(off_hour_global) * 60 + id(off_minute_global);
+          
+          // Проверяем, нужно ли включить лампу
+          if (current_minutes == on_minutes && id(last_switched_minute) != on_minutes) {
+            if (!id(grow_lamp).state) {
+              ESP_LOGI("scheduler", "Time is %02d:%02d, turning lamp ON", time.hour, time.minute);
+              id(grow_lamp).turn_on();
+            }
+            id(last_switched_minute) = on_minutes;
+          }
+          
+          // Проверяем, нужно ли выключить лампу
+          if (current_minutes == off_minutes && id(last_switched_minute) != off_minutes) {
+            if (id(grow_lamp).state) {
+              ESP_LOGI("scheduler", "Time is %02d:%02d, turning lamp OFF", time.hour, time.minute);
+              id(grow_lamp).turn_off();
+            }
+            id(last_switched_minute) = off_minutes;
+          }
+          
+          // Сбрасываем флаг переключения, когда прошла хотя бы одна минута
+          if (current_minutes != id(last_switched_minute)) {
+            if (id(last_switched_minute) != -1 && 
+                current_minutes != on_minutes && 
+                current_minutes != off_minutes) {
+              id(last_switched_minute) = -1;
+            }
+          }
+
+  # Периодическая синхронизация времени с HA каждый час
+  - interval: 1h
+    then:
+      - lambda: |-
+          ESP_LOGI("main", "Requesting time sync from Home Assistant");
+      - homeassistant.service:
+          service: homeassistant.update_entity
+          data:
+            entity_id: !lambda 'return "time." + App.get_name();'
